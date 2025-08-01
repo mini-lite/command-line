@@ -64,6 +64,7 @@ function M.command_string()
 end
 
 -- Add status bar item once
+-- TODO: find other position for command line or make it custom or clear all
 if not core.status_view:get_item("status:command_line") then
   core.status_view:add_item({
     name = "status:command_line",
@@ -107,10 +108,6 @@ function keymap.on_key_pressed(key, ...)
 
   return original_on_key_pressed(key, ...)
 end
-
-command.add(DocView, {
-    ["command_line:start_command"] = M.start_command,
-})
 
 return M
 

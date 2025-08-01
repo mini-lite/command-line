@@ -1,0 +1,28 @@
+# lite-xl-command-line
+make status bar a command line for modules
+
+# Install
+
+git clone in your plugins folder
+
+# Usage
+in your module 
+
+#+begin_src lua
+local command_line = require "plugins.lite-xl-command-line"
+command_line.set_prompt("Command") -- choose your prompt
+
+-- pass callback to execute when command finished by pressing "enter"
+-- start_command() will exectute the callback
+["vimxl-normal:command-mode"] = function(state)
+command_line.start_command(function(user_input) 
+    local cmd = vim_available_commands[user_input]
+    if cmd then
+       command.perform(cmd, state.view)
+    end
+end)
+end
+
+#+end_src
+
+
