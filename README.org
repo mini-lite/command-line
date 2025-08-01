@@ -1,11 +1,11 @@
-# lite-xl-command-line
+* lite-xl-command-line
 make status bar a command line for modules
 
-# Install
+* Install
 
 git clone in your plugins folder
 
-# Usage
+* Usage
 in your module 
 
 #+begin_src lua
