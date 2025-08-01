@@ -25,4 +25,11 @@ end
 
 #+end_src
 
+* Config
+you can clear the status bar and show only commad_line by setting
 
+#+begin_src lua
+command_line.minimal_status_view = true
+#+end_src
+
+it needs reboot each time.

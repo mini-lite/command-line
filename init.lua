@@ -10,8 +10,8 @@ local command = require "core.command"
 
 local M = {}
 
--- TODO: command line should clear the status bar entirely
--- TODO: console.log stealing the status bar
+-- TODO: command line should clear the status bar entirely is user wants
+-- TODO: console.log stealing the status bar (test it and see if still happen)
 
 M.last_user_input = ""
 M.command_prompt_label = ""
@@ -109,5 +109,22 @@ function keymap.on_key_pressed(key, ...)
   return original_on_key_pressed(key, ...)
 end
 
-return M
+local ran = false
+
+local mt = {
+  __newindex = function(_, key, value)
+    if key == "minimal_status_view" and value == true and not ran then
+      ran = true
+      core.add_thread(function()
+        core.status_view:hide_items()
+        core.status_view:show_items(
+          "status:command_line"
+        )
+      end)
+    end
+    rawset(M, key, value)
+  end
+}
+
+return setmetatable(M, mt)
 
