@@ -1,5 +1,6 @@
 * lite-xl-command-line
-make status bar a command line for modules
+make status bar a command line for user and modules
+it will not execute commands but launches the execution
 
 * Install
 
@@ -9,27 +10,34 @@ git clone in your plugins folder
 in your config or module: 
 
 #+begin_src lua
--- vimxl case
 local command_line = require "plugins.lite-xl-command-line"
 command_line.set_prompt("Vimxl") -- choose your prompt
 
+-- vimxl case
+-- vimxl already provides:
+-- execute_command: to launch functions 
+-- get_suggested_commands: to get suggestions 
 local vim_functions = require "plugins.vimxl.functions"
-
--- pass callback to execute when command finished by pressing "enter"
--- start_command() will exectute the callback
 vim_functions["vimxl-normal:command-mode"] = function(state)
-  command_line.start_command(function(user_input)
+  command_line.start_command{
+    submit = function(user_input)
       state:execute_command(user_input)
-  end)
+    end,
+    suggest = function(user_input)
+      return state:get_suggested_commands(user_input)
+    end
+  }
 end
-
 #+end_src
+
+Currently, suggestions are just a hint. taking the suggestion input is not yet implemented.
+so you need to continue typing.
 
 * Config
 you can clear the status bar and show only commad_line by setting
+it needs reboot each time.
 
 #+begin_src lua
 command_line.minimal_status_view = true
 #+end_src
 
-it needs reboot each time.
