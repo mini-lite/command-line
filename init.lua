@@ -11,7 +11,7 @@ local command = require "core.command"
 local M = {}
 
 -- TODO: !, ~,  and similar are filtered should be fixed 
--- TODO: command line should clear the status bar entirely is user wants
+-- TODO: start working on autocompletion for the commands
 -- TODO: console.log stealing the status bar (test it and see if still happen)
 
 M.last_user_input = ""
