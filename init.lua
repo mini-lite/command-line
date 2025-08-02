@@ -14,8 +14,9 @@ local M = {}
 
 -- DONE: command input receives SDL2 processed text input
 -- DONE: processing keys still going to detect enter and esc and backspace
+-- DONE: start working on autocompletion for the commands
 
--- TODO: start working on autocompletion for the commands
+-- TODO: exectute even lite xl commands
 -- TODO: clearing status bar shoul accept exceptions
 -- TODO: console.log stealing the status bar (test it and see if still happen)
 
@@ -26,23 +27,18 @@ M.command_prompt_label = ""
 M.in_command = false
 M.user_input = ""
 M.done_callback = nil
-
-function M.start_command(callback)
-  M.in_command = true
-  M.user_input = ""
-  M.done_callback = callback or nil  -- optional
-end
+M.suggest_callback = nil
 
 -- customize prompt
 function M.set_prompt(prompt)
   M.command_prompt_label = string.format("%s:", prompt) 
 end
     
--- start command
-function M.start_command(callback)
+function M.start_command(opts)
   M.in_command = true
   M.user_input = ""
-  M.done_callback = callback or nil  -- optional
+  M.done_callback = opts and opts.submit or nil
+  M.suggest_callback = opts and opts.suggest or function(_) return {} end
 end
 
 -- get last user input
@@ -63,10 +59,22 @@ function M.execute_or_return_command()
   end
 end
 
--- function to hold user input
 function M.command_string()
   if M.in_command then
-    return { M.command_prompt_label .. M.user_input }
+    local suggestion_suffix = ""
+    if #M.user_input > 0 then
+      local suggestions = M.suggest_callback and M.suggest_callback(M.user_input)
+      local suggestion = suggestions and suggestions[1] and suggestions[1].text or ""
+      if suggestion:sub(1, #M.user_input) == M.user_input and #suggestion > #M.user_input then
+        suggestion_suffix = suggestion:sub(#M.user_input + 1)
+      end
+    end
+
+    return {
+      style.accent, M.command_prompt_label,
+      style.text, M.user_input,
+      style.dim, suggestion_suffix
+    }
   end
   return {}
 end
