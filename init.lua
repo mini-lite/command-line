@@ -10,9 +10,16 @@ local command = require "core.command"
 
 local M = {}
 
--- TODO: !, ~,  and similar are filtered should be fixed 
+-- Change log-----------------------------------------------------------------
+
+-- DONE: command input receives SDL2 processed text input
+-- DONE: processing keys still going to detect enter and esc and backspace
+
 -- TODO: start working on autocompletion for the commands
+-- TODO: clearing status bar shoul accept exceptions
 -- TODO: console.log stealing the status bar (test it and see if still happen)
+
+------------------------------------------------------------------------------
 
 M.last_user_input = ""
 M.command_prompt_label = ""
@@ -65,7 +72,6 @@ function M.command_string()
 end
 
 -- Add status bar item once
--- TODO: find other position for command line or make it custom or clear all
 if not core.status_view:get_item("status:command_line") then
   core.status_view:add_item({
     name = "status:command_line",
@@ -77,12 +83,18 @@ if not core.status_view:get_item("status:command_line") then
   })
 end
 
-local original_on_key_pressed = keymap.on_key_pressed
+local original_on_event = core.on_event
+function core.on_event(type, ...)
+  if type == "textinput" and M.in_command then
+    local text = ...
+    M.user_input = M.user_input .. text
+    return true -- prevent further propagation
+  end
 
--- Accepts only A-Z and a-z
-local function is_letter_key(k)
-  return #k == 1 and k:match("%a")
+  return original_on_event(type, ...)
 end
+
+local original_on_key_pressed = keymap.on_key_pressed
 
 function keymap.on_key_pressed(key, ...)
   if PLATFORM ~= "Linux" and ime.editing then
@@ -98,20 +110,14 @@ function keymap.on_key_pressed(key, ...)
       M.user_input = ""
     elseif key == "backspace" then
       M.user_input = M.user_input:sub(1, -2)
-    elseif key == "space" then
-      M.user_input = M.user_input .. " "
-    elseif is_letter_key(key) then
-      M.user_input = M.user_input .. key
     end
-
-    return true  -- prevents key from reaching the editor
   end
 
   return original_on_key_pressed(key, ...)
 end
 
+-- adding a config to clear status bar
 local ran = false
-
 local mt = {
   __newindex = function(_, key, value)
     if key == "minimal_status_view" and value == true and not ran then
