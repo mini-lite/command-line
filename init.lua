@@ -5,13 +5,14 @@
 -- DONE: start working on autocompletion for the commands
 -- DONE: console.log stealing the status bar (test it and see if still happen)
 -- DONE: also / can use command-line ??
+-- DONE: command-line must steal status-bar no matter what
+-- In progress: exectute even lite xl commands
 
--- TODO: command-line must steal status-bar no matter what
+-- TODO: cursor is missing in command that is needed
 -- TODO: history of commands controlled by up and down
 -- TODO: cancel is other event is captured like moving up down or switching window
 -- TODO: add exceptions for items to show in status bar
 -- TODO: check how to handle taking applying suggestions
--- TODO: exectute even lite xl commands
 -- TODO: clearing status bar shoul accept exceptions
 
 ------------------------------------------------------------------------------
@@ -24,10 +25,12 @@ local ime = require "core.ime"
 local system = require "system"
 local style = require "core.style"
 local command = require "core.command"
+local config = require "core.config"
 
 local current_instance = nil
 local status_bar_item_name = "status:command_line"
 local old_log = nil
+local original_timeout = config.message_timeout
 
 ---@class CommandLineInstance
 local CommandLine = {}
@@ -57,10 +60,11 @@ function CommandLine:start_command(opts)
   self.suggest_callback = opts and opts.suggest or function(_) return {} end
   current_instance = self
 
-  -- TODO: to be verified override any existing status messages
-  StatusView.message = {}
-  StatusView.message_timeout = 0
-  StatusView:show()
+  -- force-clear current message only, without changing global timeout logic
+  local sv = core.status_view
+  if sv and sv.message then
+    sv.message_timeout = 0  -- Expire it immediately
+  end
 end
 
 function CommandLine:get_last_user_input()
