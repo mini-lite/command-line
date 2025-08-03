@@ -17,20 +17,80 @@ command_line.set_prompt("Vimxl") -- choose your prompt
 -- vimxl already provides:
 -- execute_command: to launch functions 
 -- get_suggested_commands: to get suggestions 
-local vim_functions = require "plugins.vimxl.functions"
+-- set instance command
+local instance_command = command_line.new()
+instance_command:set_prompt(":")
 vim_functions["vimxl-normal:command-mode"] = function(state)
-  command_line.start_command{
-    submit = function(user_input)
-      state:execute_command(user_input)
+  instance_command:start_command{
+    submit = function(input)
+      state:execute_command(input)
     end,
-    suggest = function(user_input)
-      return state:get_suggested_commands(user_input)
+    suggest = function(input)
+      return state:get_suggested_commands(input)
     end
   }
 end
+
+-- set search instance
+local instance_search = command_line.new()
+instance_search:set_prompt("/")
+vim_functions["vimxl-normal:find"] = function(state)
+  instance_search:start_command{
+    submit = function(input)
+      -- go to the first match
+    end,
+    suggest = function(input)
+      -- highlight all matches starting current line
+      core.log("match %s", input)
+      return {}
+    end
+  }
+end
+
+-- <EXPERIMENTAL>: override the default core:find-command to use command-line
+-- fint command instance
+local instance_find_command = command_line.new()
+instance_find_command:set_prompt(":")
+
+-- remove 'docs:' and 'core:' and similar prefixes 
+local function strip_prefix(cmd)
+  local colon_pos = cmd:find(":")
+  if colon_pos then
+    return cmd:sub(colon_pos + 1)
+  end
+  return cmd
+end
+
+command.add(nil, {
+  ["core:find-command"] = function()
+    local commands = command.get_all_valid()
+    instance_find_command:start_command{
+      submit = function(input)
+        local res = common.fuzzy_match(commands, input)
+        if res[1] then
+          command.perform(res[1])
+        end
+      end,
+      suggest = function(input)
+        local res = {}
+        for _, full_cmd in ipairs(commands) do
+          local short_cmd = strip_prefix(full_cmd)
+          if short_cmd:find(input, 1, true) == 1 then
+            table.insert(res, {
+              text = short_cmd,
+              info = keymap.get_binding(full_cmd),
+              command = full_cmd,
+            })
+          end
+        end
+        return res
+      end
+    }
+  end
+})
 #+end_src
 
-Currently, suggestions are just a hint. taking the suggestion input is not yet implemented.
+Note: currently, suggestions are just a hint. taking the suggestion input is not yet implemented.
 so you need to continue typing.
 
 * Config

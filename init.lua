@@ -1,3 +1,21 @@
+-- Change log-----------------------------------------------------------------
+
+-- DONE: command input receives SDL2 processed text input
+-- DONE: processing keys still going to detect enter and esc and backspace
+-- DONE: start working on autocompletion for the commands
+-- DONE: console.log stealing the status bar (test it and see if still happen)
+-- DONE: also / can use command-line ??
+
+-- TODO: command-line must steal status-bar no matter what
+-- TODO: history of commands controlled by up and down
+-- TODO: cancel is other event is captured like moving up down or switching window
+-- TODO: add exceptions for items to show in status bar
+-- TODO: check how to handle taking applying suggestions
+-- TODO: exectute even lite xl commands
+-- TODO: clearing status bar shoul accept exceptions
+
+------------------------------------------------------------------------------
+
 -- mod-version:3
 local core = require "core"
 local keymap = require "core.keymap"
@@ -5,144 +23,147 @@ local StatusView = require "core.statusview"
 local ime = require "core.ime"
 local system = require "system"
 local style = require "core.style"
-local DocView = require "core.docview"
 local command = require "core.command"
 
-local M = {}
+local current_instance = nil
+local status_bar_item_name = "status:command_line"
+local old_log = nil
 
--- Change log-----------------------------------------------------------------
+---@class CommandLineInstance
+local CommandLine = {}
+CommandLine.__index = CommandLine
 
--- DONE: command input receives SDL2 processed text input
--- DONE: processing keys still going to detect enter and esc and backspace
--- DONE: start working on autocompletion for the commands
-
--- TODO: also / can use command-line ??
--- TODO: add exceptions for items to show in status bar
--- TODO: check how to handle taking suggestions in
--- TODO: exectute even lite xl commands
--- TODO: clearing status bar shoul accept exceptions
--- TODO: console.log stealing the status bar (test it and see if still happen)
-
-------------------------------------------------------------------------------
-
-M.last_user_input = ""
-M.command_prompt_label = ""
-M.in_command = false
-M.user_input = ""
-M.done_callback = nil
-M.suggest_callback = nil
-
--- customize prompt
-function M.set_prompt(prompt)
-  M.command_prompt_label = string.format("%s:", prompt) 
-end
-    
-function M.start_command(opts)
-  M.in_command = true
-  M.user_input = ""
-  M.done_callback = opts and opts.submit or nil
-  M.suggest_callback = opts and opts.suggest or function(_) return {} end
+function CommandLine:new()
+  return setmetatable({
+    in_command = false,
+    user_input = "",
+    last_user_input = "",
+    command_prompt_label = "",
+    done_callback = nil,
+    suggest_callback = function(_) return {} end
+  }, self)
 end
 
--- get last user input
-function M.get_last_user_input()
-   return M.last_user_input 
+function CommandLine:set_prompt(prompt)
+  self.command_prompt_label = prompt
 end
 
--- execute_command
-function M.execute_or_return_command()
-  M.last_user_input = M.user_input
-  M.user_input = ""
-  M.in_command = false
+function CommandLine:start_command(opts)
+  old_log = core.log
+  core.log = core.log_quiet
+  self.in_command = true
+  self.user_input = ""
+  self.done_callback = opts and opts.submit or nil
+  self.suggest_callback = opts and opts.suggest or function(_) return {} end
+  current_instance = self
 
-  -- call if it was provided
-  if M.done_callback then
-    M.done_callback(M.last_user_input)
-    M.done_callback = nil
+  -- TODO: to be verified override any existing status messages
+  StatusView.message = {}
+  StatusView.message_timeout = 0
+  StatusView:show()
+end
+
+function CommandLine:get_last_user_input()
+  return self.last_user_input
+end
+
+function CommandLine:execute_or_return_command()
+  self.last_user_input = self.user_input
+  self.user_input = ""
+  self.in_command = false
+  core.log = old_log
+
+  if self.done_callback then
+    self.done_callback(self.last_user_input)
+    self.done_callback = nil
   end
 end
 
-function M.command_string()
-  if M.in_command then
+function CommandLine:get_status_string()
+  if self.in_command then
     local suggestion_suffix = ""
-    if #M.user_input > 0 then
-      local suggestions = M.suggest_callback and M.suggest_callback(M.user_input)
+    if #self.user_input > 0 then
+      local suggestions = self.suggest_callback(self.user_input)
       local suggestion = suggestions and suggestions[1] and suggestions[1].text or ""
-      if suggestion:sub(1, #M.user_input) == M.user_input and #suggestion > #M.user_input then
-        suggestion_suffix = suggestion:sub(#M.user_input + 1)
+      if suggestion:sub(1, #self.user_input) == self.user_input and #suggestion > #self.user_input then
+        suggestion_suffix = suggestion:sub(#self.user_input + 1)
       end
     end
 
     return {
-      style.accent, M.command_prompt_label,
-      style.text, M.user_input,
+      style.accent, self.command_prompt_label,
+      style.text, self.user_input,
       style.dim, suggestion_suffix
     }
   end
   return {}
 end
 
--- Add status bar item once
+-- static status item (shared across all instances)
 if not core.status_view:get_item("status:command_line") then
   core.status_view:add_item({
-    name = "status:command_line",
+    name = status_bar_item_name,
     alignment = StatusView.Item.LEFT,
-    get_item = M.command_string,
-    position = 1000, -- after other items
-    tooltip = "command line input",
+    get_item = function()
+      return current_instance and current_instance:get_status_string() or {}
+    end,
+    position = 1000,
+    tooltip = "command input",
     separator = core.status_view.separator2
   })
 end
 
+-- Intercept text input
 local original_on_event = core.on_event
 function core.on_event(type, ...)
-  if type == "textinput" and M.in_command then
+  if type == "textinput" and current_instance and current_instance.in_command then
     local text = ...
-    M.user_input = M.user_input .. text
-    return true -- prevent further propagation
+    current_instance.user_input = current_instance.user_input .. text
+    return true
   end
-
   return original_on_event(type, ...)
 end
 
+-- Intercept key presses
 local original_on_key_pressed = keymap.on_key_pressed
-
 function keymap.on_key_pressed(key, ...)
-  if PLATFORM ~= "Linux" and ime.editing then
-    return false
-  end
+  if PLATFORM ~= "Linux" and ime.editing then return false end
 
-  if M.in_command then
+  if current_instance and current_instance.in_command then
     if key == "return" then
-      M.in_command = false
-      M.execute_or_return_command()
+      current_instance:execute_or_return_command()
     elseif key == "escape" then
-      M.in_command = false
-      M.user_input = ""
+      current_instance.user_input = ""
+      current_instance.in_command = false
     elseif key == "backspace" then
-      M.user_input = M.user_input:sub(1, -2)
+      current_instance.user_input = current_instance.user_input:sub(1, -2)
     end
   end
 
   return original_on_key_pressed(key, ...)
 end
 
--- adding a config to clear status bar
+-- Optional: limit status view to command only
 local ran = false
-local mt = {
+local api = {}
+setmetatable(api, {
   __newindex = function(_, key, value)
     if key == "minimal_status_view" and value == true and not ran then
       ran = true
       core.add_thread(function()
         core.status_view:hide_items()
-        core.status_view:show_items(
-          "status:command_line"
-        )
+        core.status_view:show_items(status_bar_item_name)
       end)
     end
-    rawset(M, key, value)
+    rawset(api, key, value)
   end
-}
+})
 
-return setmetatable(M, mt)
+-- console log taiming
 
+-- factory method
+function api.new()
+  return CommandLine:new()
+end
+
+return api
