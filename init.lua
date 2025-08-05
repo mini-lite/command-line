@@ -2,14 +2,17 @@
 
 -- In progress: exectute even lite xl commands
 
--- TODO: command line steals cursor from editor turns off the cursor maybe width 0
 -- TODO: all show messages uses show_message of command line
--- TODO: history of commands controlled by up and down
 -- TODO: cancel is other event is captured like moving up down or switching window
+-- TODO: history of commands controlled by up and down
 -- TODO: add exceptions for items to show in status bar
 -- TODO: check how to handle taking applying suggestions
--- TODO: clearing status bar shoul accept exceptions
+-- TODO: clearing status bar shoul accept exceptions, like items we want to show next to it
 
+-- DONE: cursor shall stop blinking where arraws
+-- DONE: move caret in command line
+-- DONE: put characters in commad line at position of caret
+-- DONE: command line steals cursor from editor turns off the cursor maybe width 0
 -- DONE: cursor is missing in command that is needed
 -- DONE: command input receives SDL2 processed text input
 -- DONE: processing keys still going to detect enter and esc and backspace
@@ -29,6 +32,8 @@ local style = require "core.style"
 local command = require "core.command"
 local config = require "core.config"
 local StatusView = require "core.statusview"
+local renderer = require("renderer")
+local common = require "core.common"
 
 local current_instance = nil
 local current_message = nil
@@ -37,6 +42,8 @@ local MESSAGE_DURATION = 1 -- seconds
 local status_bar_item_name = "status:command_line"
 local old_log = nil
 local original_timeout = config.message_timeout
+local original_caret_width = style.caret_width 
+local blink_period = 1.0  
 
 -- helper to clear status bar messages
 local function clear_messages()
@@ -56,6 +63,7 @@ function CommandLine:new()
     user_input = "",
     last_user_input = "",
     command_prompt_label = "",
+    caret_pos = 1,
     done_callback = nil,
     cancel_callback = nil, 
     suggest_callback = function(_) return {} end
@@ -79,6 +87,8 @@ function CommandLine:start_command(opts)
   self.suggest_callback = opts and opts.suggest or function(_) return {} end
   current_instance = self
   clear_messages() -- flush messages
+  style.caret_width = common.round(0 * SCALE)
+  self.caret_pos = 1
 end
 
 function CommandLine:get_last_user_input()
@@ -89,6 +99,7 @@ function CommandLine:execute_or_return_command()
   self.last_user_input = self.user_input
   self.user_input = ""
   self.in_command = false
+  self.caret_width = original_caret_width
   core.log = old_log
 
   if self.done_callback then
@@ -101,6 +112,7 @@ function CommandLine:cancel_command()
   if self.in_command then
     self.user_input = ""
     self.in_command = false
+    self.caret_width = original_caret_width
     if self.cancel_callback then
       self.cancel_callback()
     end
@@ -151,74 +163,112 @@ core.status_view:add_item({
   separator = core.status_view.separator2,
 })
 
--- <experiment draw caret>
-local renderer = require("renderer")
 local original_draw = core.status_view.draw
 local item = core.status_view:get_item(status_bar_item_name)
 
+local function render_caret(x, y)
+  local t = (core.frame_start or 0) % blink_period
+  if t > blink_period / 2 then return end  -- blink off phase
+
+  local h = style.font:get_height()
+  renderer.draw_rect(x, y, 2, h, style.caret)
+end
+
+
+local original_draw = core.status_view.draw
 core.status_view.draw = function(self)
   original_draw(self)
 
-  -- do it only when in command
   if current_instance and current_instance.in_command then
-  local user_input_text = current_instance and current_instance.user_input.." " or ""
-  local user_input_width = style.font:get_width(user_input_text)
+    local prompt = current_instance.command_prompt_label
+    local caret_pos = current_instance.caret_pos
+    local input = current_instance.user_input        -- only user input
 
+    local prompt_width = style.font:get_width(prompt or "")
+    local input_before_caret = (input or ""):sub(1, caret_pos - 1)
+    local input_width = style.font:get_width(input_before_caret)
 
-  core.root_view:defer_draw(function()
-    local x_base = 6 + style.font:get_width(current_instance.command_prompt_label or "")
-    local content = item.get_item and item:get_item()
-    local text = content and content.text or ""
-    local w = style.font:get_width(text)
-    local h = style.font:get_height()
-
-    -- Assume item is left-aligned and near x = 0
-    -- Or adjust for your layout if not
-    local x = x_base + user_input_width + 3  -- base padding + text width + estetic pad
+    local x = style.padding.x + prompt_width + input_width
     local y = self.position.y + style.padding.y
 
-    renderer.draw_rect(
-      x,
-      y,
-      2,  -- thin caret
-      h,
-      {255, 0, 0, 255}
-    )
-  end)
+    core.root_view:defer_draw(function()
+      render_caret(x, y)
+    end)
   end
 end
-------------------------------------------------------------------------------
 
 -- Intercept text input
 local original_on_event = core.on_event
 function core.on_event(type, ...)
   if current_instance and current_instance.in_command then
+    local input = current_instance.user_input or ""
+    current_instance.caret_pos = current_instance.caret_pos or #input + 1
+
     if type == "textinput" then
       local text = ...
-      current_instance.user_input = current_instance.user_input .. text
+      -- Insert text at caret_pos
+      local before = input:sub(1, current_instance.caret_pos - 1)
+      local after = input:sub(current_instance.caret_pos)
+      current_instance.user_input = before .. text .. after
+      current_instance.caret_pos = current_instance.caret_pos + #text
       return true
 
     elseif type == "keypressed" then
+      blink_period = 0
       local key = ...
       if PLATFORM ~= "Linux" and ime.editing then return false end
 
       if key == "return" then
         current_instance:execute_or_return_command()
         return true
+
       elseif key == "escape" then
         current_instance:cancel_command()
         return true
+
       elseif key == "backspace" then
-        current_instance.user_input = current_instance.user_input:sub(1, -2)
+        if current_instance.caret_pos > 1 then
+          local before = input:sub(1, current_instance.caret_pos - 2)
+          local after = input:sub(current_instance.caret_pos)
+          current_instance.user_input = before .. after
+          current_instance.caret_pos = current_instance.caret_pos - 1
+        end
+        return true
+
+      elseif key == "left" then
+        if current_instance.caret_pos > 1 then
+          current_instance.caret_pos = current_instance.caret_pos - 1
+        end
+        return true
+
+      elseif key == "right" then
+        if current_instance.caret_pos <= #current_instance.user_input then
+          current_instance.caret_pos = current_instance.caret_pos + 1
+        end
+        return true
+
+      elseif key == "up" then
+        --if current_instance:history_up() then
+        --  current_instance.caret_pos = #current_instance.user_input + 1
+        --end
+        return true
+
+      elseif key == "down" then
+        --if current_instance:history_down() then
+        --  current_instance.caret_pos = #current_instance.user_input + 1
+        --end
         return true
       end
+
+    elseif type == "keyreleased" then
+        blink_period = 1
     end
   end
 
   return original_on_event(type, ...)
 end
 
--- Optional: limit status view to command only
+-- optional: limit status view to command only
 local ran = false
 local api = {}
 setmetatable(api, {
