@@ -11,7 +11,11 @@ in your config or module:
 
 #+begin_src lua
 local command_line = require "plugins.lite-xl-command-line"
+-- configure and init
 command_line.set_prompt("Vimxl") -- choose your prompt
+command-line.set_item_name("status:Vimxl")
+command_line.add_status_item()
+command_line.minimal_status_view = true -- only item will show
 
 -- vimxl case
 -- vimxl already provides:
@@ -23,11 +27,16 @@ instance_command:set_prompt(":")
 vim_functions["vimxl-normal:command-mode"] = function(state)
   instance_command:start_command{
     submit = function(input)
+       -- do something if executing
       state:execute_command(input)
     end,
     suggest = function(input)
+       -- do something if user is typing 
       return state:get_suggested_commands(input)
     end
+    cancel = function()
+       -- do something if canceling
+    end,
   }
 end
 

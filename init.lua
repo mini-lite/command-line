@@ -152,17 +152,6 @@ function CommandLine:get_status_string()
   return {}
 end
 
-core.status_view:add_item({
-  name = status_bar_item_name,
-  alignment = StatusView.Item.LEFT,
-  get_item = function()
-    return current_instance and current_instance:get_status_string() or {}
-  end,
-  position = 1000,
-  tooltip = "command line",
-  separator = core.status_view.separator2,
-})
-
 local original_draw = core.status_view.draw
 local item = core.status_view:get_item(status_bar_item_name)
 
@@ -295,6 +284,23 @@ function api.show_message(content, duration)
   else
     current_message_expiry = now + (duration or MESSAGE_DURATION)
   end
+end
+
+function api.set_item_name(name)
+    status_bar_item_name = name
+end
+
+function api.add_status_item()
+  core.status_view:add_item({
+    name = status_bar_item_name,
+    alignment = StatusView.Item.LEFT,
+    get_item = function()
+      return current_instance and current_instance:get_status_string() or {}
+    end,
+    position = 1000,
+    tooltip = "command line",
+    separator = core.status_view.separator2,
+  })
 end
 
 -- factory method
