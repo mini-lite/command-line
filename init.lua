@@ -43,6 +43,7 @@ function CommandLine:new()
     last_user_input = "",
     command_prompt_label = "",
     done_callback = nil,
+    cancel_callback = nil, 
     suggest_callback = function(_) return {} end
   }, self)
 end
@@ -57,6 +58,7 @@ function CommandLine:start_command(opts)
   self.in_command = true
   self.user_input = ""
   self.done_callback = opts and opts.submit or nil
+  self.cancel_callback = opts and opts.cancel or nil 
   self.suggest_callback = opts and opts.suggest or function(_) return {} end
   current_instance = self
 
@@ -103,8 +105,18 @@ function CommandLine:get_status_string()
   return {}
 end
 
+function CommandLine:cancel_command()
+  if self.in_command then
+    self.user_input = ""
+    self.in_command = false
+    if self.cancel_callback then
+      self.cancel_callback()
+    end
+  end
+end
+
 -- static status item (shared across all instances)
-if not core.status_view:get_item("status:command_line") then
+if not core.status_view:get_item(status_bar_item_name) then
   core.status_view:add_item({
     name = status_bar_item_name,
     alignment = StatusView.Item.LEFT,
@@ -120,31 +132,30 @@ end
 -- Intercept text input
 local original_on_event = core.on_event
 function core.on_event(type, ...)
-  if type == "textinput" and current_instance and current_instance.in_command then
-    local text = ...
-    current_instance.user_input = current_instance.user_input .. text
-    return true
-  end
-  return original_on_event(type, ...)
-end
-
--- Intercept key presses
-local original_on_key_pressed = keymap.on_key_pressed
-function keymap.on_key_pressed(key, ...)
-  if PLATFORM ~= "Linux" and ime.editing then return false end
-
   if current_instance and current_instance.in_command then
-    if key == "return" then
-      current_instance:execute_or_return_command()
-    elseif key == "escape" then
-      current_instance.user_input = ""
-      current_instance.in_command = false
-    elseif key == "backspace" then
-      current_instance.user_input = current_instance.user_input:sub(1, -2)
+    if type == "textinput" then
+      local text = ...
+      current_instance.user_input = current_instance.user_input .. text
+      return true
+
+    elseif type == "keypressed" then
+      local key = ...
+      if PLATFORM ~= "Linux" and ime.editing then return false end
+
+      if key == "return" then
+        current_instance:execute_or_return_command()
+        return true
+      elseif key == "escape" then
+        current_instance:cancel_command()
+        return true
+      elseif key == "backspace" then
+        current_instance.user_input = current_instance.user_input:sub(1, -2)
+        return true
+      end
     end
   end
 
-  return original_on_key_pressed(key, ...)
+  return original_on_event(type, ...)
 end
 
 -- Optional: limit status view to command only
@@ -156,7 +167,7 @@ setmetatable(api, {
       ran = true
       core.add_thread(function()
         core.status_view:hide_items()
-        core.status_view:show_items(status_bar_item_name)
+        core.status_view:show_items({status_bar_item_name, "status:vim_mode"})
       end)
     end
     rawset(api, key, value)
