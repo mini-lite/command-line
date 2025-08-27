@@ -1,6 +1,7 @@
 * command-line
-  Author: S.Ghamri
   This plugin turns the status bar into a powerful command line interface for Lite XL and Pragtical. It supports custom prompts, command execution, suggestions, and easy integration with other plugins (e.g., Vim emulation).
+  Author: S.Ghamri
+
 
 ** Why Multiple Instances?
 
@@ -202,4 +203,5 @@ MIT
 
 ** Related Source
 - Vim plugin for Lite XL: https://github.com/mini-lite/vim
+
 
