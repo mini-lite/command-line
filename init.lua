@@ -2,6 +2,7 @@
 
 -- In progress: exectute even lite xl commands
 
+-- TODO: think how to use y/n prompt
 -- TODO: organize messages to show
 -- TODO: cancel is other event is captured like moving up down or switching window
 -- TODO: history of commands controlled by up and down
@@ -26,12 +27,8 @@
 
 -- mod-version:3
 local core = require "core"
-local keymap = require "core.keymap"
 local ime = require "core.ime"
-local system = require "system"
 local style = require "core.style"
-local command = require "core.command"
-local config = require "core.config"
 local StatusView = require "core.statusview"
 local renderer = require("renderer")
 local common = require "core.common"
@@ -40,10 +37,8 @@ local current_instance = nil
 local current_message = nil
 local temp_message = nil
 local current_message_expiry = nil
-local MESSAGE_DURATION = 1 -- seconds
 local status_bar_item_name = "status:command_line"
 local old_log = nil
-local original_timeout = config.message_timeout
 local original_caret_width = style.caret_width
 local blink_period = 1.0
 
@@ -80,6 +75,7 @@ function CommandLine:set_prompt(prompt)
 end
 
 function CommandLine:start_command(opts)
+  self.cancel_command(self)
   old_log = core.log
   core.log = core.log_quiet
   self.in_command = true
@@ -99,8 +95,8 @@ end
 
 function CommandLine:execute_or_return_command()
   self.last_user_input = self.user_input
-  self.user_input = ""
   self.in_command = false
+  self.user_input = ""
   self.caret_width = original_caret_width
   core.log = old_log
 
@@ -112,8 +108,8 @@ end
 
 function CommandLine:cancel_command()
   if self.in_command then
-    self.user_input = ""
     self.in_command = false
+    self.user_input = ""
     self.caret_width = original_caret_width
     if self.cancel_callback then
       self.cancel_callback()
@@ -300,10 +296,13 @@ function api.add_status_item()
   })
 end
 
+function api.is_active()
+  return current_instance ~= nil and current_instance.in_command == true
+end
+
 -- factory method
 function api.new()
   return CommandLine:new()
 end
 
 return api
-
